@@ -1,0 +1,95 @@
+{
+  "_comment": "Telegram Script Runner Bot Configuration",
+  
+  "bot_token": "YOUR_BOT_TOKEN_HERE",
+  
+  "_user_management": "User access control settings",
+  "allowed_users": [],
+  "admin_users": [],
+  "max_scripts_per_user": 5,
+  "max_script_size": 50000,
+  
+  "_execution_settings": "Script execution parameters",
+  "script_timeout": 1800,
+  "compile_timeouts": {
+    "c": 30,
+    "cpp": 45,
+    "java": 60
+  },
+  "supported_languages": ["python", "c", "cpp", "java", "sh"],
+  
+  "_resource_limits": "System resource constraints",
+  "execution_limits": {
+    "memory_mb": 256,
+    "cpu_percent": 30,
+    "disk_mb": 100,
+    "max_processes": 3
+  },
+  
+  "_security": "Security and sandboxing settings",
+  "security": {
+    "enable_sandbox": true,
+    "strict_mode": true,
+    "blocked_commands": [
+      "rm", "rmdir", "del", "delete", "format", "fdisk",
+      "wget", "curl", "nc", "netcat", "ncat", "telnet",
+      "ssh", "scp", "rsync", "ftp", "sftp",
+      "sudo", "su", "doas", "pkexec",
+      "chmod", "chown", "chgrp", "mount", "umount",
+      "mkfs", "dd", "shred", "wipe",
+      "iptables", "ufw", "firewall-cmd",
+      "systemctl", "service", "crontab",
+      "kill", "killall", "pkill", "xkill"
+    ],
+    "blocked_imports": [
+      "subprocess", "os.system", "os.popen", "os.spawn",
+      "eval", "exec", "compile", "__import__",
+      "input", "raw_input", "open",
+      "socket", "urllib", "requests", "http",
+      "ftplib", "smtplib", "telnetlib",
+      "ctypes", "multiprocessing", "threading"
+    ],
+    "blocked_file_operations": [
+      "open", "file", "write", "read",
+      "remove", "unlink", "rmdir", "mkdir",
+      "rename", "move", "copy"
+    ],
+    "max_network_requests": 0,
+    "allow_file_read": false,
+    "allow_file_write": false
+  },
+  
+  "_logging": "Logging and monitoring settings",
+  "logging": {
+    "level": "INFO",
+    "log_retention_days": 3,
+    "max_log_size_mb": 10,
+    "enable_file_logging": true,
+    "log_file": "bot.log"
+  },
+  
+  "_database": "Database configuration",
+  "database": {
+    "cleanup_interval_hours": 6,
+    "backup_interval_hours": 24,
+    "max_backup_files": 5
+  },
+  
+  "_notifications": "Bot notification settings",
+  "notifications": {
+    "notify_admin_on_error": true,
+    "notify_resource_limits": true,
+    "daily_stats": false
+  },
+  
+  "_free_hosting_optimized": "Settings optimized for free hosting",
+  "hosting": {
+    "memory_efficient": true,
+    "aggressive_cleanup": true,
+    "minimize_logs": true,
+    "compress_old_data": true,
+    "max_concurrent_scripts": 2,
+    "auto_restart_failed": false,
+    "heartbeat_interval": 300
+  }
+}
