@@ -1,7 +1,7 @@
 #!/bin/bash
 EMAIL="bettarap254@gmail.com"  # CHANGE THIS
 URLS=(
-    "https://www.einforma.com/informacion-empresa/cocktail-food-iberia"
+    "https://www...."
     # Add more URLs below
 )
 for URL in "${URLS[@]}"; do
