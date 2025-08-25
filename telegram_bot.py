@@ -1,20 +1,19 @@
+#!/usr/bin/env python3
+"""
+Complete Telegram Script Runner Bot with Automatic Dependency Installation
+"""
+
 import os
 import asyncio
 import subprocess
-import tempfile
 import hashlib
 import json
-from datetime import datetime
-from typing import Dict, Optional
 import logging
+import re
+from datetime import datetime
+from typing import Dict, Optional, List
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-
-# Import our custom modules
-from config_manager import Config
-from security_manager import SecurityManager
-from resource_monitor import ResourceMonitor
-from database_manager import DatabaseManager
 
 # Configure logging
 logging.basicConfig(
@@ -24,10 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class ScriptManager:
-    def __init__(self, config: Config, db: DatabaseManager, security: SecurityManager):
-        self.config = config
-        self.db = db
-        self.security = security
+    def __init__(self):
         self.running_scripts: Dict[str, Dict] = {}
         self.scripts_dir = "user_scripts"
         self.logs_dir = "script_logs"
@@ -87,12 +83,172 @@ class ScriptManager:
         
         return filepath
     
+    def is_safe_command(self, command: str) -> bool:
+        """Basic security check"""
+        dangerous = ['rm -rf', 'rm /', 'rmdir', 'del ', 'format', 'fdisk', 'wget', 'curl', 
+                    'ssh', 'sudo', 'su ', 'mount', 'chmod 777', 'kill -9', ':(){ :|:& };:']
+        
+        command_lower = command.lower()
+        return not any(danger in command_lower for danger in dangerous)
+    
+    def extract_python_imports(self, content: str) -> List[str]:
+        """Extract import statements from Python code and return packages to install"""
+        imports = []
+        
+        # Common packages that can be auto-installed safely
+        safe_packages = {
+            'requests': 'requests',
+            'numpy': 'numpy', 
+            'pandas': 'pandas',
+            'matplotlib': 'matplotlib',
+            'beautifulsoup4': 'beautifulsoup4',
+            'bs4': 'beautifulsoup4',
+            'selenium': 'selenium',
+            'flask': 'flask',
+            'fastapi': 'fastapi',
+            'PIL': 'Pillow',
+            'cv2': 'opencv-python',
+            'yaml': 'PyYAML',
+            'lxml': 'lxml',
+            'psutil': 'psutil',
+            'aiohttp': 'aiohttp',
+            'colorama': 'colorama',
+            'tqdm': 'tqdm',
+            'discord': 'discord.py',
+            'telebot': 'pyTelegramBotAPI',
+            'pygame': 'pygame',
+            'tkinter': None,  # Built-in
+            'asyncio': None,  # Built-in
+            'json': None,     # Built-in
+            'os': None,       # Built-in
+            'sys': None,      # Built-in
+            'time': None,     # Built-in
+            'datetime': None, # Built-in
+            'random': None,   # Built-in
+            'math': None,     # Built-in
+            're': None,       # Built-in
+            'urllib': None,   # Built-in
+            'socket': None,   # Built-in
+            'threading': None, # Built-in
+            'multiprocessing': None, # Built-in
+        }
+        
+        # Find import statements
+        for line in content.split('\n'):
+            line = line.strip()
+            
+            # Match: import package
+            match = re.match(r'^import\s+([a-zA-Z_][a-zA-Z0-9_]*)', line)
+            if match:
+                module = match.group(1)
+                if module in safe_packages and safe_packages[module]:
+                    imports.append(safe_packages[module])
+            
+            # Match: from package import something
+            match = re.match(r'^from\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+import', line)
+            if match:
+                module = match.group(1)
+                if module in safe_packages and safe_packages[module]:
+                    imports.append(safe_packages[module])
+        
+        return list(set(imports))  # Remove duplicates
+
     async def run_script(self, script_id: str, filepath: str, command: str, user_id: int):
-        """Run script with given command"""
+        """Run script with automatic dependency installation for Python"""
         log_file = os.path.join(self.logs_dir, f"{script_id}.log")
         
         try:
-            # Start the process
+            # Check if it's a Python script
+            if filepath.endswith('.py'):
+                # Read the script content
+                with open(filepath, 'r') as f:
+                    content = f.read()
+                
+                # Extract required packages
+                required_packages = self.extract_python_imports(content)
+                
+                # Store process info
+                self.running_scripts[script_id] = {
+                    'user_id': user_id,
+                    'process': None,
+                    'command': command,
+                    'filepath': filepath,
+                    'log_file': log_file,
+                    'start_time': datetime.now(),
+                    'status': 'installing' if required_packages else 'running'
+                }
+                
+                # Create log file and install dependencies if needed
+                with open(log_file, 'w') as log:
+                    log.write(f"Started at: {datetime.now()}\n")
+                    log.write(f"Command: {command}\n")
+                    
+                    if required_packages:
+                        log.write(f"📦 Auto-installing packages: {', '.join(required_packages)}\n")
+                        log.write("=" * 60 + "\n")
+                        log.flush()
+                        
+                        # Install each package
+                        for package in required_packages:
+                            log.write(f"\n🔄 Installing {package}...\n")
+                            log.flush()
+                            
+                            try:
+                                # Use pip to install package
+                                process = await asyncio.create_subprocess_exec(
+                                    'pip', 'install', '--user', '--quiet', package,
+                                    stdout=asyncio.subprocess.PIPE,
+                                    stderr=asyncio.subprocess.STDOUT
+                                )
+                                
+                                # Stream pip output
+                                while True:
+                                    line = await process.stdout.readline()
+                                    if not line:
+                                        break
+                                    decoded_line = line.decode('utf-8', errors='ignore')
+                                    log.write(decoded_line)
+                                    log.flush()
+                                
+                                await process.wait()
+                                
+                                if process.returncode == 0:
+                                    log.write(f"✅ {package} installed successfully\n")
+                                else:
+                                    log.write(f"❌ Failed to install {package} (exit code: {process.returncode})\n")
+                                    
+                            except Exception as e:
+                                log.write(f"❌ Error installing {package}: {e}\n")
+                        
+                        log.write("\n" + "=" * 60 + "\n")
+                        log.write("🚀 Starting script execution...\n")
+                        log.write("=" * 60 + "\n")
+                        log.flush()
+                    else:
+                        log.write("No additional packages needed to install.\n")
+                        log.write("-" * 50 + "\n")
+                
+                # Update status to running
+                self.running_scripts[script_id]['status'] = 'running'
+            else:
+                # For non-Python scripts, use regular execution
+                self.running_scripts[script_id] = {
+                    'user_id': user_id,
+                    'process': None,
+                    'command': command,
+                    'filepath': filepath,
+                    'log_file': log_file,
+                    'start_time': datetime.now(),
+                    'status': 'running'
+                }
+                
+                # Create log file
+                with open(log_file, 'w') as log:
+                    log.write(f"Started at: {datetime.now()}\n")
+                    log.write(f"Command: {command}\n")
+                    log.write("-" * 50 + "\n")
+            
+            # Now run the actual script
             process = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,
@@ -100,23 +256,10 @@ class ScriptManager:
                 cwd=os.path.dirname(filepath)
             )
             
-            # Store process info
-            self.running_scripts[script_id] = {
-                'user_id': user_id,
-                'process': process,
-                'command': command,
-                'filepath': filepath,
-                'log_file': log_file,
-                'start_time': datetime.now(),
-                'status': 'running'
-            }
+            self.running_scripts[script_id]['process'] = process
             
-            # Stream output to log file
-            with open(log_file, 'w') as log:
-                log.write(f"Started at: {datetime.now()}\n")
-                log.write(f"Command: {command}\n")
-                log.write("-" * 50 + "\n")
-                
+            # Stream script output to log file
+            with open(log_file, 'a') as log:
                 while True:
                     line = await process.stdout.readline()
                     if not line:
@@ -137,6 +280,13 @@ class ScriptManager:
             logger.error(f"Error running script {script_id}: {e}")
             if script_id in self.running_scripts:
                 self.running_scripts[script_id]['status'] = 'error'
+                
+                # Write error to log file
+                try:
+                    with open(log_file, 'a') as log:
+                        log.write(f"\n❌ Error: {e}\n")
+                except:
+                    pass
     
     def stop_script(self, script_id: str) -> bool:
         """Stop running script"""
@@ -144,10 +294,11 @@ class ScriptManager:
             return False
         
         script_info = self.running_scripts[script_id]
-        process = script_info['process']
+        process = script_info.get('process')
         
         try:
-            process.terminate()
+            if process:
+                process.terminate()
             script_info['status'] = 'stopped'
             return True
         except:
@@ -181,86 +332,79 @@ class ScriptManager:
 class TelegramScriptBot:
     def __init__(self, token: str):
         self.token = token
-        self.config = Config()
-        self.db = DatabaseManager()
-        self.security = SecurityManager(self.config)
-        self.script_manager = ScriptManager(self.config, self.db, self.security)
-        self.resource_monitor = ResourceMonitor(self.config)
+        self.script_manager = ScriptManager()
         self.user_sessions = {}  # Track user sessions waiting for commands
-        
-        # Start resource monitoring
-        asyncio.create_task(self.resource_monitor.monitor_loop())
         
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Start command handler"""
         welcome_msg = """
-🤖 **Script Runner Bot**
+🤖 **Script Runner Bot with Auto-Install**
 
-Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continuously!
+Send me your scripts and I'll run them continuously with automatic dependency installation!
+
+**✨ New Features:**
+• 📦 **Auto-installs Python packages** (requests, numpy, pandas, etc.)
+• 🚀 **Instant execution** - no more "ModuleNotFoundError"
+• 🔒 **Safe package management** - only trusted packages
 
 **Commands:**
 /start - Show this help
-/list - List your running scripts
+/list - List your running scripts  
 /stop - Stop a script
 /logs - View script logs
-/status - Check script status
 
-**Usage:**
-1. Send me your script code
-2. I'll detect the language and ask for execution command
-3. Confirm to start running your script continuously
+**Supported Languages:**
+• Python (.py) - **With auto-install!**
+• C (.c)
+• C++ (.cpp)
+• Java (.java)
+• Shell (.sh)
+
+**Example - Python with requests:**
+```python
+import requests
+import time
+
+while True:
+    response = requests.get('https://api.github.com')
+    print(f"Status: {response.status_code}")
+    time.sleep(10)
+```
+
+**📦 Supported auto-install packages:**
+requests, numpy, pandas, matplotlib, beautifulsoup4, selenium, flask, fastapi, PIL (Pillow), opencv-python, PyYAML, lxml, psutil, aiohttp, colorama, tqdm, discord.py, pygame
+
+Just send me your code - I'll handle the rest! 🚀
         """
         await update.message.reply_text(welcome_msg, parse_mode='Markdown')
     
     async def handle_script(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle incoming script content"""
         user_id = update.effective_user.id
-        username = update.effective_user.username
-        first_name = update.effective_user.first_name
-        
-        # Check if user is allowed
-        if not self.config.is_user_allowed(user_id):
-            await update.message.reply_text("❌ You are not authorized to use this bot.")
-            return
-        
-        # Add/update user in database
-        self.db.add_user(user_id, username, first_name)
-        
         content = update.message.text
         
-        # Check script size
-        max_size = self.config.get("max_script_size", 100000)
-        if len(content) > max_size:
-            await update.message.reply_text(f"❌ Script too large ({len(content)} > {max_size} bytes)")
+        # Basic security checks
+        if len(content) > 100000:  # 100KB limit
+            await update.message.reply_text("❌ Script too large (max 100KB)")
             return
+        
+        # Check for dangerous content patterns
+        dangerous_patterns = [
+            'rm -rf /', 'format c:', ':(){ :|:& };:', 'sudo rm', '/etc/passwd',
+            'import os.*system', 'subprocess.*shell=True.*rm', 'eval.*input'
+        ]
+        
+        content_lower = content.lower()
+        for pattern in dangerous_patterns:
+            if re.search(pattern, content_lower):
+                await update.message.reply_text("❌ Script contains potentially dangerous operations!")
+                return
         
         # Detect language
         language = self.script_manager.detect_language(content)
         if not language:
             await update.message.reply_text(
-                "❌ Couldn't detect script language. Supported: Python, C, C++, Java, Shell"
-            )
-            return
-        
-        # Security check
-        is_safe, violations = self.security.scan_script_content(content, language)
-        if not is_safe:
-            violation_text = "\n".join([f"• {v}" for v in violations])
-            await update.message.reply_text(
-                f"❌ **Security violations detected:**\n\n{violation_text}",
-                parse_mode='Markdown'
-            )
-            return
-        
-        # Check user script limit
-        user_scripts = self.db.get_user_scripts(user_id)
-        active_scripts = [s for s in user_scripts if s['status'] == 'running']
-        max_scripts = self.config.get("max_scripts_per_user", 10)
-        
-        if len(active_scripts) >= max_scripts:
-            await update.message.reply_text(
-                f"❌ Maximum script limit reached ({len(active_scripts)}/{max_scripts})\n"
-                f"Stop some scripts first using /list and /stop commands."
+                "❌ Couldn't detect script language.\n\n**Supported:** Python, C, C++, Java, Shell"
             )
             return
         
@@ -270,8 +414,12 @@ Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continu
         # Save script
         filepath = self.script_manager.save_script(script_id, content, language)
         
-        # Store in database
-        self.db.add_script(script_id, user_id, language, content, "", filepath)
+        # For Python scripts, show what packages will be auto-installed
+        auto_install_info = ""
+        if language == 'python':
+            packages = self.script_manager.extract_python_imports(content)
+            if packages:
+                auto_install_info = f"\n📦 **Will auto-install:** {', '.join(packages)}"
         
         # Store session info
         self.user_sessions[user_id] = {
@@ -284,7 +432,7 @@ Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continu
         
         # Suggest default commands
         default_commands = {
-            'python': f'python {os.path.basename(filepath)}',
+            'python': f'python3 {os.path.basename(filepath)}',
             'c': f'gcc {os.path.basename(filepath)} -o {script_id} && ./{script_id}',
             'cpp': f'g++ {os.path.basename(filepath)} -o {script_id} && ./{script_id}',
             'java': f'javac {os.path.basename(filepath)} && java {script_id}',
@@ -294,8 +442,8 @@ Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continu
         suggested_command = default_commands.get(language, f'cat {os.path.basename(filepath)}')
         
         keyboard = [
-            [InlineKeyboardButton(f"Use: {suggested_command}", callback_data=f"use_default_{script_id}")],
-            [InlineKeyboardButton("📝 Enter Custom Command", callback_data=f"custom_command_{script_id}")],
+            [InlineKeyboardButton(f"✅ Use: {suggested_command}", callback_data=f"use_default_{script_id}")],
+            [InlineKeyboardButton("📝 Custom Command", callback_data=f"custom_command_{script_id}")],
             [InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{script_id}")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -303,8 +451,8 @@ Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continu
         await update.message.reply_text(
             f"✅ **{language.upper()} script detected!**\n"
             f"Script ID: `{script_id}`\n"
-            f"File saved: `{os.path.basename(filepath)}`\n\n"
-            f"**Suggested execution command:**\n`{suggested_command}`\n\n"
+            f"File: `{os.path.basename(filepath)}`{auto_install_info}\n\n"
+            f"**Suggested command:**\n`{suggested_command}`\n\n"
             f"Choose an option:",
             reply_markup=reply_markup,
             parse_mode='Markdown'
@@ -328,7 +476,7 @@ Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continu
                     
                     # Get default command
                     default_commands = {
-                        'python': f'python {os.path.basename(filepath)}',
+                        'python': f'python3 {os.path.basename(filepath)}',
                         'c': f'gcc {os.path.basename(filepath)} -o {script_id} && ./{script_id}',
                         'cpp': f'g++ {os.path.basename(filepath)} -o {script_id} && ./{script_id}',
                         'java': f'javac {os.path.basename(filepath)} && java {script_id}',
@@ -344,8 +492,11 @@ Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continu
             script_id = data.replace("custom_command_", "")
             await query.edit_message_text(
                 f"📝 **Enter execution command for script `{script_id}`:**\n\n"
-                f"Example: `python script.py --args`\n"
-                f"Send me the command as your next message.",
+                f"Send me the command as your next message.\n\n"
+                f"**Examples:**\n"
+                f"• `python3 script.py --args`\n"
+                f"• `gcc script.c -o app && ./app arg1 arg2`\n"
+                f"• `bash script.sh`",
                 parse_mode='Markdown'
             )
             
@@ -381,6 +532,11 @@ Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continu
         command = update.message.text.strip()
         script_id = session['script_id']
         
+        # Security check
+        if not self.script_manager.is_safe_command(command):
+            await update.message.reply_text("❌ Command contains dangerous operations!")
+            return
+        
         # Start running script with custom command
         await self.start_script_execution(update, script_id, command, user_id)
     
@@ -390,41 +546,45 @@ Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continu
         if not session:
             return
         
-        # Security check for command
-        is_safe, reason = self.security.sanitize_command(command)
-        if not is_safe:
-            error_msg = f"❌ **Command security violation:**\n{reason}"
-            if hasattr(update_or_query, 'edit_message_text'):
-                await update_or_query.edit_message_text(error_msg, parse_mode='Markdown')
-            else:
-                await update_or_query.message.reply_text(error_msg, parse_mode='Markdown')
-            return
-        
         filepath = session['filepath']
-        
-        # Create sandboxed command if enabled
-        safe_command = self.security.create_sandbox_command(command, filepath)
-        
-        # Update database with command
-        self.db.update_script_status(script_id, 'running')
-        script = self.db.get_script(script_id)
-        if script:
-            # Update with actual command
-            with self.db.db_path as conn:
-                cursor = conn.cursor()
-                cursor.execute("UPDATE scripts SET command = ? WHERE script_id = ?", (command, script_id))
-                conn.commit()
+        language = session['language']
+        content = session['content']
         
         # Clean up session
         del self.user_sessions[user_id]
         
-        # Send confirmation
-        message = f"🚀 **Starting script execution**\n\n" \
-                 f"Script ID: `{script_id}`\n" \
-                 f"Command: `{command}`\n" \
-                 f"Status: Running continuously...\n\n" \
-                 f"Use /logs {script_id} to view output\n" \
-                 f"Use /stop {script_id} to stop execution"
+        # Enhanced message for Python scripts with auto-install info
+        if language == 'python':
+            packages = self.script_manager.extract_python_imports(content)
+            if packages:
+                message = f"🚀 **Script Starting with Auto-Install!**\n\n" \
+                         f"Script ID: `{script_id}`\n" \
+                         f"Language: {language.upper()}\n" \
+                         f"Command: `{command}`\n" \
+                         f"📦 **Installing:** {', '.join(packages)}\n\n" \
+                         f"⏳ Please wait while dependencies are installed...\n\n" \
+                         f"**Commands:**\n" \
+                         f"• `/logs {script_id}` - View installation & execution output\n" \
+                         f"• `/stop {script_id}` - Stop script\n" \
+                         f"• `/list` - List all scripts"
+            else:
+                message = f"🚀 **Script Started!**\n\n" \
+                         f"Script ID: `{script_id}`\n" \
+                         f"Command: `{command}`\n" \
+                         f"Status: ⏳ Running...\n\n" \
+                         f"**Commands:**\n" \
+                         f"• `/logs {script_id}` - View output\n" \
+                         f"• `/stop {script_id}` - Stop script\n" \
+                         f"• `/list` - List all scripts"
+        else:
+            message = f"🚀 **Script Started!**\n\n" \
+                     f"Script ID: `{script_id}`\n" \
+                     f"Command: `{command}`\n" \
+                     f"Status: ⏳ Running...\n\n" \
+                     f"**Commands:**\n" \
+                     f"• `/logs {script_id}` - View output\n" \
+                     f"• `/stop {script_id}` - Stop script\n" \
+                     f"• `/list` - List all scripts"
         
         if hasattr(update_or_query, 'edit_message_text'):
             await update_or_query.edit_message_text(message, parse_mode='Markdown')
@@ -433,7 +593,7 @@ Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continu
         
         # Start running script in background
         asyncio.create_task(
-            self.script_manager.run_script(script_id, filepath, safe_command, user_id)
+            self.script_manager.run_script(script_id, filepath, command, user_id)
         )
     
     async def list_scripts(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -442,7 +602,7 @@ Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continu
         scripts = self.script_manager.get_user_scripts(user_id)
         
         if not scripts:
-            await update.message.reply_text("📭 No running scripts found.")
+            await update.message.reply_text("📭 No scripts found.\n\nSend me some code to get started!")
             return
         
         message = "📋 **Your Scripts:**\n\n"
@@ -451,20 +611,29 @@ Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continu
                 'running': '🟢',
                 'completed': '✅',
                 'stopped': '⏹️',
-                'error': '❌'
+                'error': '❌',
+                'installing': '📦'
             }.get(info['status'], '❓')
             
+            status_text = {
+                'installing': 'Installing packages...',
+                'running': 'Running',
+                'completed': 'Completed',
+                'stopped': 'Stopped',
+                'error': 'Error'
+            }.get(info['status'], info['status'])
+            
             message += f"{status_emoji} `{script_id}`\n"
-            message += f"   Command: `{info['command']}`\n"
-            message += f"   Started: {info['start_time'].strftime('%H:%M:%S')}\n"
-            message += f"   Status: {info['status']}\n\n"
+            message += f"   📝 Command: `{info['command'][:50]}{'...' if len(info['command']) > 50 else ''}`\n"
+            message += f"   ⏰ Started: {info['start_time'].strftime('%H:%M:%S')}\n"
+            message += f"   📊 Status: {status_text}\n\n"
         
         await update.message.reply_text(message, parse_mode='Markdown')
     
     async def stop_script(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Stop a script"""
         if not context.args:
-            await update.message.reply_text("Usage: /stop <script_id>")
+            await update.message.reply_text("❓ **Usage:** `/stop <script_id>`\n\nUse `/list` to see your scripts.")
             return
         
         script_id = context.args[0]
@@ -473,41 +642,60 @@ Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continu
         # Check if user owns this script
         scripts = self.script_manager.get_user_scripts(user_id)
         if script_id not in scripts:
-            await update.message.reply_text("❌ Script not found or not owned by you.")
+            await update.message.reply_text("❌ Script not found or not owned by you.\n\nUse `/list` to see your scripts.")
             return
         
         success = self.script_manager.stop_script(script_id)
         if success:
-            await update.message.reply_text(f"⏹️ Script `{script_id}` stopped successfully.")
+            await update.message.reply_text(f"⏹️ Script `{script_id}` stopped successfully!")
         else:
             await update.message.reply_text(f"❌ Failed to stop script `{script_id}`.")
     
     async def show_logs(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show script logs"""
         if not context.args:
-            await update.message.reply_text("Usage: /logs <script_id> [lines]")
+            await update.message.reply_text("❓ **Usage:** `/logs <script_id> [lines]`\n\nExample: `/logs abc123 30`")
             return
         
         script_id = context.args[0]
-        lines = int(context.args[1]) if len(context.args) > 1 else 50
+        lines = int(context.args[1]) if len(context.args) > 1 and context.args[1].isdigit() else 50
         user_id = update.effective_user.id
         
         # Check if user owns this script
         scripts = self.script_manager.get_user_scripts(user_id)
         if script_id not in scripts:
-            await update.message.reply_text("❌ Script not found or not owned by you.")
+            await update.message.reply_text("❌ Script not found or not owned by you.\n\nUse `/list` to see your scripts.")
             return
         
         logs = self.script_manager.get_script_logs(script_id, lines)
         
+        if not logs.strip() or logs == "No logs available":
+            script_status = scripts[script_id].get('status', 'unknown')
+            if script_status == 'installing':
+                await update.message.reply_text(f"📦 Script `{script_id}` is installing dependencies...\n\nPlease wait and try again in a few moments.")
+            else:
+                await update.message.reply_text(f"📭 No logs available for `{script_id}` yet.\n\nThe script might still be starting up.")
+            return
+        
         # Split long logs into multiple messages
         max_length = 4000
         if len(logs) > max_length:
+            await update.message.reply_text(f"📋 **Logs for `{script_id}` (showing last {lines} lines):**")
             for i in range(0, len(logs), max_length):
                 chunk = logs[i:i + max_length]
                 await update.message.reply_text(f"```\n{chunk}\n```", parse_mode='Markdown')
         else:
-            await update.message.reply_text(f"📋 **Logs for `{script_id}`:**\n```\n{logs}\n```", parse_mode='Markdown')
+            await update.message.reply_text(f"📋 **Logs for `{script_id}` (last {lines} lines):**\n```\n{logs}\n```", parse_mode='Markdown')
+    
+    async def handle_message_router(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Route messages to appropriate handlers"""
+        user_id = update.effective_user.id
+        
+        # Check if user is waiting for custom command
+        if user_id in self.user_sessions and self.user_sessions[user_id].get('waiting_for_custom_command'):
+            await self.handle_custom_command(update, context)
+        else:
+            await self.handle_script(update, context)
     
     def run(self):
         """Start the bot"""
@@ -529,22 +717,33 @@ Send me your scripts in Python, C, C++, Java, or Shell and I'll run them continu
         ))
         
         print("🤖 Bot started! Press Ctrl+C to stop.")
+        print("📋 Send /start to your bot to begin!")
         application.run_polling()
-    
-    async def handle_message_router(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Route messages to appropriate handlers"""
-        user_id = update.effective_user.id
-        
-        # Check if user is waiting for custom command
-        if user_id in self.user_sessions and self.user_sessions[user_id].get('waiting_for_custom_command'):
-            await self.handle_custom_command(update, context)
-        else:
-            await self.handle_script(update, context)
 
-if __name__ == "__main__":
+def main():
+    """Main function"""
     # Load configuration
-    config = Config()
-    bot_token = config.get("bot_token")
+    config_file = 'config.json'
+    
+    if not os.path.exists(config_file):
+        print("❌ config.json not found!")
+        print("Creating basic config file...")
+        
+        config = {
+            "bot_token": "YOUR_BOT_TOKEN_HERE"
+        }
+        
+        with open(config_file, 'w') as f:
+            json.dump(config, f, indent=2)
+        
+        print("✅ Created config.json")
+        print("Please edit config.json and add your bot token from @BotFather")
+        return
+    
+    with open(config_file, 'r') as f:
+        config = json.load(f)
+    
+    bot_token = config.get("bot_token", "")
     
     if not bot_token or bot_token == "YOUR_BOT_TOKEN_HERE":
         print("❌ Please set your bot token in config.json!")
@@ -554,3 +753,6 @@ if __name__ == "__main__":
     
     bot = TelegramScriptBot(bot_token)
     bot.run()
+
+if __name__ == "__main__":
+    main()

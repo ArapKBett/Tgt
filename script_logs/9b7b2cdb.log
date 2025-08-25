@@ -1,0 +1,14 @@
+Started at: 2025-08-23 08:22:42.838380
+Command: gcc 9b7b2cdb.c -o 9b7b2cdb && ./9b7b2cdb
+--------------------------------------------------
+9b7b2cdb.c:45:28: warning: missing terminating '"' character [-Winvalid-pp-token]
+   45 |     sprintf(final_request, "GET / HTTP/1.1\r\nHost: %s\r\n%sConnection: close\r>
+      |                            ^
+9b7b2cdb.c:45:28: error: expected expression
+9b7b2cdb.c:74:5: error: expected identifier or '('
+   74 |     return 0;
+      |     ^
+9b7b2cdb.c:75:1: error: extraneous closing brace ('}')
+   75 | }
+      | ^
+1 warning and 3 errors generated.

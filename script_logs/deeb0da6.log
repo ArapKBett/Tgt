@@ -1,0 +1,4 @@
+Started at: 2025-08-23 08:31:48.738766
+Command: gcc deeb0da6.c -o deeb0da6 && ./deeb0da6
+--------------------------------------------------
+Usage: /data/data/com.termux/files/home/Tgt/user_scripts/deeb0da6 <target-ip> <target-port>

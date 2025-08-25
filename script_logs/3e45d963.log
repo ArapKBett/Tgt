@@ -1,0 +1,4 @@
+Started at: 2025-08-23 08:32:14.531481
+Command: gcc 3e45d963.c -o 3e45d963 && ./3e45d963
+--------------------------------------------------
+Usage: /data/data/com.termux/files/home/Tgt/user_scripts/3e45d963 <target-ip> <target-port>

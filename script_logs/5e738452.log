@@ -1,0 +1,7 @@
+Started at: 2025-08-23 08:42:26.907060
+Command: python3 5e738452.py
+--------------------------------------------------
+Traceback (most recent call last):
+  File "/data/data/com.termux/files/home/Tgt/user_scripts/5e738452.py", line 5, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'

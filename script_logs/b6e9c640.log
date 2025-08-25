@@ -1,0 +1,19 @@
+Started at: 2025-08-23 09:02:55.572867
+Command: python3 b6e9c640.py
+📦 Auto-installing packages: requests
+============================================================
+
+🔄 Installing requests...
+
+[notice] A new release of pip is available: 25.0.1 -> 25.2
+[notice] To update, run: pip install --upgrade pip
+ERROR: Can not perform a '--user' install. User site-packages are not visible in this virtualenv.
+❌ Failed to install requests (exit code: 1)
+
+============================================================
+🚀 Starting script execution...
+============================================================
+Traceback (most recent call last):
+  File "/data/data/com.termux/files/home/Tgt/user_scripts/b6e9c640.py", line 5, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'

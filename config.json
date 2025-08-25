@@ -1,7 +1,7 @@
 {
   "_comment": "Telegram Script Runner Bot Configuration",
   
-  "bot_token": "YOUR_BOT_TOKEN_HERE",
+  "bot_token": "8281708536:AAGLa_U7jZzXwzDQrkmrtqltkO2E5wyu1fY",
   
   "_user_management": "User access control settings",
   "allowed_users": [],
