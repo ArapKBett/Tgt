@@ -2,7 +2,7 @@
 
 EMAIL="admin@einforma.com"
 URLS=(
-    "https://www.einforma.com/informacion-empresa/cocktail-food-iberia"
+    "https://www....."
 )
 
 for URL in "${URLS[@]}"; do
